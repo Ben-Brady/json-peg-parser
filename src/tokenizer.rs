@@ -1,27 +1,22 @@
-use crate::scanner::{Scanner};
+use crate::Error;
+use crate::scanner::Scanner;
 use std::fmt::Debug;
-use std::str::Chars;
-use std::iter::{Iterator, Peekable};
+use std::iter::Iterator;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Token {
-    ObjectOpen,
     Colon,
+    Comma,
+    ObjectOpen,
     ObjectClose,
-    
     ArrayOpen,
     ArrayClose,
-
-    Comma,
-
-    False,
     True,
+    False,
     Null,
     String(String),
     Number(String),
 }
-
-// type PeekableIterator = Peekable<Box<Chars <'static>>>;
 
 pub struct Tokenizer {
     scanner: Scanner,
@@ -31,113 +26,103 @@ impl Iterator for Tokenizer {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_token()
+        self.next_token().ok()
     }
 }
 
 impl Tokenizer {
-    pub fn from_str(value: &str) -> Tokenizer {
+    pub fn new(value: &str) -> Tokenizer {
         Tokenizer {
-            scanner: Scanner::from_str(value)
+            scanner: Scanner::new(value)
         }
     }
     
-    pub fn next_token(&mut self) -> Option<Token> {
-        self.scanner.extract_while_matching(" \r\n\t");
-        let next_ch = self.scanner.peek()?;
+    pub fn next_token(&mut self) -> Result<Token, Error> {
+        self.scanner.possible_many_characters(" \r\n\t")?;
+        self.scanner.pop_buffer();
+        let next_ch = self.scanner.peek().ok_or(Error::UnexpectedEnd)?;
+
         let token = match next_ch {
-            ',' => self.scanner.extract_token(",", Token::Comma),
-            ':' => self.scanner.extract_token(":", Token::Colon),
-            '{' => self.scanner.extract_token("{", Token::ObjectOpen),
-            '}' => self.scanner.extract_token("}", Token::ObjectClose),
-            '[' => self.scanner.extract_token("[", Token::ArrayOpen),
-            ']' => self.scanner.extract_token("]", Token::ArrayClose),
-            't' => self.scanner.extract_token("true", Token::True),
-            'f' => self.scanner.extract_token("false", Token::False),
-            'n' => self.scanner.extract_token("null", Token::Null),
+            ',' => self.next_symbol(",", Token::Comma),
+            ':' => self.next_symbol(":", Token::Colon),
+            '{' => self.next_symbol("{", Token::ObjectOpen),
+            '}' => self.next_symbol("}", Token::ObjectClose),
+            '[' => self.next_symbol("[", Token::ArrayOpen),
+            ']' => self.next_symbol("]", Token::ArrayClose),
+            't' => self.next_symbol("true", Token::True),
+            'f' => self.next_symbol("false", Token::False),
+            'n' => self.next_symbol("null", Token::Null),
             '"' => self.next_string(),
             '-'|'0'|'1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9' => self.next_number(),
-            _ => None,
-        };
-        println!("{:?}", token);
-        token
+            _ => { Err(Error::InvalidSyntax)},
+        }?;
+        Ok(token)
+    }
+}
+
+impl Tokenizer {
+    pub fn next_symbol<T>(&mut self, expected_token: &str, value: T) -> Result<T, Error> {
+        self.scanner.take_string(expected_token)?;
+        Ok(value)
     }
 
-    fn next_string(&mut self) -> Option<Token> {
-        let mut string = String::new();
-        self.scanner.extract_string("\"")?;
-        
+    fn next_string(&mut self) -> Result<Token, Error> {
+        self.scanner.possible_single_characters("\"")?;
         loop {
-            let ch = self.scanner.next()?;
+            let ch = self.scanner.expect_single_any()?;
 
             if ch == '"' {
                 break;
-            }
-            
-            if ch != '\\' {
-                string.push(ch);
-                continue;
-            }
-
-            string.push('\\');
-            let next_ch = self.scanner.peek()?;
-            match next_ch {
-                ch@('"'|'\\'|'/'|'n'|'r'|'t'|'b'|'f'|'u') => {
-                    self.scanner.advance();
-                    string.push(ch);
-                },
-                _ => {
-                    return None;
-                },
-            }
-        }
-        
-        Some(Token::String(string))
-    }
-    
-
-    fn next_number(&mut self) -> Option<Token> {
-        let mut text = String::new();
-        if self.scanner.peek()? == '-' {
-            self.scanner.advance();
-            text.push('-');
-        }
-        
-
-        let next_ch = self.scanner.next()?;
-        text.push(next_ch);
-        match next_ch {
-            '1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9' => {
-                let numbers = self.scanner.extract_while_matching("1234567890")?;
-                text.push_str(numbers.as_str());
-                if self.scanner.peek() == Some('.') {
-                    text.push(self.scanner.next()?);
-                    let numbers = self.scanner.extract_while_matching("1234567890")?;
-                    text.push_str(numbers.as_str());
+            } else if ch == '\\' {
+                let next_ch = self.scanner.peek().ok_or(Error::InvalidSyntax)?;
+                match next_ch {
+                    '"'|'\\'|'/'|'n'|'r'|'t'|'b'|'f'|'u' => {
+                        self.scanner.expect_single_any()?;
+                    },
+                    _ => Err(Error::InvalidSyntax)?,
                 }
-                Some(Token::Number(text))
+            }
+        }
+
+        let text = self.scanner.pop_buffer();
+        Ok(Token::String(text))
+    }
+
+    fn next_number(&mut self) -> Result<Token, Error> {
+        self.scanner.possible_single_characters("-")?;
+        match self.scanner.expect_single_any()? {
+            '1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9' => {
+                self.scanner.possible_many_characters("1234567890")?;
+                if self.scanner.peek() == Some('.') {
+                    self.next_number_take_decimal()?;
+                }
             },
             '0' => {
                 match self.scanner.peek() {
-                    None => Some(Token::Number(text)),
-                    Some(ch) => match ch {
-                        'e'|'E' => {
-                            text.push(self.scanner.next()?);
-                            let plus_minus = self.scanner.extract_if_matching("-+")?;
-                            text.push_str(plus_minus.as_str());
-                            text.push_str(self.scanner.extract_while_matching("1234567890")?.as_str());
-                            Some(Token::Number(text))
-                        },
-                        '.' => {
-                            text.push(self.scanner.next()?);
-                            text.push_str(self.scanner.extract_while_matching("1234567890")?.as_str());
-                            Some(Token::Number(text))
-                        },
-                        _ => Some(Token::Number(text))
+                    None => { },
+                    Some(ch) => {
+                        match ch {
+                            'e'|'E' => {
+                                self.scanner.expect_single_characters("eE")?;
+                                self.scanner.expect_single_characters("-+")?;
+                                self.scanner.expect_many_characters("1234567890")?;
+                            },
+                            '.' => { self.next_number_take_decimal()?; },
+                            _ => {}
+                        }
                     }
                 }
             },
-            _ => None
-        }
+            _ => { return Err(Error::InvalidSyntax)}
+        };
+
+        let number = self.scanner.pop_buffer();
+        Ok(Token::Number(number))
+    }
+
+    fn next_number_take_decimal(&mut self) ->Result<(), Error> {
+        self.scanner.expect_single_any()?; // Take the .
+        self.scanner.expect_many_characters("1234567890")?;
+        Ok(())
     }
 }

@@ -1,24 +1,22 @@
-
-#[cfg(test)]
 mod tokenizer {
     use crate::{Tokenizer, Token};
 
     #[test]
-    fn parses_null() {
+    fn parses_complex() {
         let json = "
         {
             \"true\": true,
             \"false\": false,
         }";
-        let tokenizer = Tokenizer::from_str(json);
+        let tokenizer = Tokenizer::new(json);
         let symbols: Vec<Token> = tokenizer.into_iter().collect();
         let expected_symbols = vec![
             Token::ObjectOpen,
-            Token::String("true".to_string()),
+            Token::String("\"true\"".to_string()),
             Token::Colon,
             Token::True,
             Token::Comma,
-            Token::String("false".to_string()),
+            Token::String("\"false\"".to_string()),
             Token::Colon,
             Token::False,
             Token::Comma,
@@ -29,14 +27,12 @@ mod tokenizer {
     }
 }
 
-
-#[cfg(test)]
 mod parser {
     use std::collections::HashMap;
 
     use crate::{parse, JSON};
 
-    fn assert_invalid(target: JSON, json: &'static str) {
+    fn assert_invalid(json: &'static str) {
         assert!(parse(json).is_err(), "Invalid JSON was parsed\n");
     }
 
@@ -49,17 +45,20 @@ mod parser {
     fn parses_null() {
         assert_parse(JSON::Null(), "null");
     }
+
+    #[test]
+    fn parses_bool() {
+        assert_parse(JSON::Boolean(false), "false");
+        assert_parse(JSON::Boolean(true), "true");
+    }
     
 
     #[test]
-    fn parses_int() {
+    fn parses_number() {
         assert_parse(JSON::Number(100.), "100");
         assert_parse(JSON::Number(0.), "0");
-    }
-
-    #[test]
-    fn parses_float() {
-        assert_parse(JSON::Number(100.200), "100.2")
+        assert_parse(JSON::Number(100.200), "100.20");
+        // assert_invalid("100.");
     }
 
     #[test]

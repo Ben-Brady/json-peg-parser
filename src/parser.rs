@@ -13,12 +13,12 @@ pub enum JSON {
 }
 
 pub fn parse(json: &str) -> Result<JSON, &'static str> {
-    let mut tokenizer = Tokenizer::from_str(json);
+    let mut tokenizer = Tokenizer::new(json);
     parse_any(tokenizer.next(), &mut tokenizer)
 }
 
 fn parse_any(initial_token: Option<Token>, tokenizer: &mut Tokenizer) -> Result<JSON, &'static str> {
-    let token = match initial_token {
+    match initial_token {
         Some(token) => match token {
             Token::ArrayOpen => Ok(JSON::Array(parse_array(tokenizer)?)),
             Token::ObjectOpen => Ok(JSON::Object(parse_object(tokenizer)?)),
@@ -33,10 +33,7 @@ fn parse_any(initial_token: Option<Token>, tokenizer: &mut Tokenizer) -> Result<
             Token::ObjectClose => Err("Unexpected Token: ObjectClose"),
         },
         None => Err("Unexpected End of JSON"),
-    };
-    println!("{:?}", token);
-    token
-
+    }
 }
 
 fn get_next_token(tokenizer: &mut Tokenizer) -> Result<Token, &'static str>{
@@ -45,12 +42,15 @@ fn get_next_token(tokenizer: &mut Tokenizer) -> Result<Token, &'static str>{
 
 fn parse_object(tokenizer: &mut Tokenizer) -> Result<HashMap<String, JSON>, &'static str> {
     let mut object = HashMap::new();
-
+    
+    let mut is_first_loop = true;
     loop {
         let key = match get_next_token(tokenizer)? {
-            Token::String(key) => Ok(key),
-            _ => Err("Expected object key to be a String")
+            Token::String(key) => Ok(parse_string(key)?),
+            Token::ObjectClose if is_first_loop => break Ok(object),
+            _ => Err("Expected object key to be a String"),
         }?;
+        is_first_loop = false;
 
         match get_next_token(tokenizer)? {
             Token::Colon => Ok(()),
@@ -77,8 +77,9 @@ fn parse_object(tokenizer: &mut Tokenizer) -> Result<HashMap<String, JSON>, &'st
 fn parse_array(tokenizer: &mut Tokenizer) -> Result<Vec<JSON>, &'static str> {
     let mut array = Vec::<JSON>::new();
     loop {
-        let value = match get_next_token(tokenizer)? {
-            Token::Colon |Token::Comma |Token::ArrayClose |Token::ObjectClose => {
+        let next_token = get_next_token(tokenizer);
+        let value = match next_token? {
+            Token::Colon|Token::Comma|Token::ArrayClose|Token::ObjectClose => {
                 Err("Unexpected Token in Array")
             }
             token => parse_any(Some(token), tokenizer)
@@ -99,5 +100,7 @@ fn parse_number(number: String) -> Result<f64, &'static str> {
 }
 
 fn parse_string(string: String) -> Result<String, &'static str> {
-    Ok(string)
+    // pop "" off ends
+    let result = string[1..(string.len() - 1)].to_string();
+    Ok(result)
 }

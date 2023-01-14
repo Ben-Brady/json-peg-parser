@@ -1,81 +1,131 @@
+use crate::Error;
 use std::{iter::{Iterator}};
 
-pub struct Scanner{
+pub struct Scanner {
     chars: Vec<char>,
     pointer: usize,
+    buffer: String,
 }
 
 impl Scanner {
-    pub fn from_str(value: &str) -> Self {
+    pub fn new(value: &str) -> Self {
         Self {
             chars: value.chars().collect(),
             pointer: 0,
+            buffer: String::new()
         }
     }
-
+    
     pub fn peek(&mut self) -> Option<char> {
         let ch = self.chars.get(self.pointer)?;
         Some(ch.to_owned())
     }
-
-    pub fn advance(&mut self){
-        self.pointer += 1;
+    
+    pub fn pop_buffer(&mut self) -> String {
+        let token = self.buffer.clone();
+        self.buffer.clear();
+        token
     }
 
-    pub fn next(&mut self) -> Option<char> {
-        let value = self.peek();
-        self.advance();
-        value
+    pub fn expect_single_any(&mut self) -> Result<char, Error> {
+        match self.peek() {
+            None => Err(Error::UnexpectedEnd),
+            Some(ch) => {
+                self.advance(1);
+                self.buffer.push(ch);
+                Ok(ch)
+            }
+        }
     }
-
 }
 
+
 impl Scanner {
-    pub fn extract_token<T>(&mut self, expected_token: &str, value: T) -> Option<T> {
-        self.extract_string(expected_token).map(|_| value)
+    fn advance(&mut self, offset: usize) {
+        self.pointer += offset;
     }
 
-    pub fn extract_string(&mut self, expected_text: &str) -> Option<bool> {
-        let mut text = String::new();
-        for expected_ch in expected_text.chars() {
-            let actual_ch = self.next()?;
-            if actual_ch != expected_ch {
-                return Some(false);
-            }
-
-            text.push(actual_ch);
+    
+    pub fn possible_single(&mut self, func: Box<dyn Fn(char) -> bool + Send + 'static>) -> Result<(), Error> {
+        match self.peek() {
+            None => Err(Error::UnexpectedEnd),
+            Some(ch) => {
+                if func(ch) {
+                    self.expect_single_any()?;
+                }
+                Ok(())
+            },
         }
-
-        Some(true)
     }
-
-    pub fn extract_while_matching(&mut self, chars: &str) -> Option<String> {
-        let mut text = String::new();
-        
+    
+    pub fn expect_single(&mut self, func: Box<dyn Fn(char) -> bool + Send + 'static>) -> Result<(), Error> {
+        match self.peek() {
+            None => Err(Error::UnexpectedEnd),
+            Some(ch) => {
+                if func(ch) {
+                    self.expect_single_any()?;
+                    Ok(())
+                 } else {
+                    Err(Error::InvalidSyntax)
+                 }
+            },
+        }
+    }
+    
+    pub fn possible_many(&mut self, func: Box<dyn Fn(char) -> bool + Send + 'static>) -> Result<(), Error> {
         loop {
-            let next_ch = self.peek();
-            match next_ch {
-                None => { break },
+            match self.peek() {
+                None => { break; },
                 Some(ch) => {
-                    if chars.chars().any(|x| x == ch) {
-                        text.push(self.next()?);
+                    if func(ch) {
+                        self.expect_single_any()?;
                     } else {
                         break;
                     }
-                }
+                },
             }
-        }
+        };
 
-        Some(text.to_string())
+        Ok(())
     }
 
-    /// Returns "" if next char doesn't match
-    pub fn extract_if_matching(&mut self, chars: &str) -> Option<String> {
-        let next_ch = self.next()?;
-        if chars.chars().any(|x| x == next_ch) {
-            Some(next_ch.to_string())
+    pub fn possible_single_characters(&mut self, chars: &'static str) -> Result<(), Error>{
+        let func = |ch| chars.chars().any(|x| x == ch);
+        self.possible_single(Box::new(func))?;
+        Ok(())
+    }
+
+    pub fn possible_many_characters(&mut self, chars: &'static str) -> Result<(), Error>{
+        let func = |ch| chars.chars().any(|x| x == ch);
+        self.possible_many(Box::new(func))?;
+        Ok(())
+    }
+
+    pub fn expect_single_characters(&mut self, chars: &'static str) -> Result<(), Error> {
+        let char = self.expect_single_any()?;
+        if chars.chars().any(|x| x == char) {
+            Ok(())
         } else {
-            Some("".to_string())
+            Err(Error::InvalidSyntax)
+        }
+    }
+    
+    pub fn expect_many_characters(&mut self, chars: &'static str) -> Result<(), Error> {
+        self.expect_single_characters(chars)?;
+        self.possible_many_characters(chars)?;
+        Ok(())
+    }
+    
+    pub fn take_string(&mut self, expected_text: &str) -> Result<(), Error> {
+        let start = self.pointer;
+        let end = self.pointer + expected_text.len();
+        let slice: String = self.chars[start..end].iter().collect();
+        
+        if slice == expected_text {
+            self.advance(expected_text.len());
+            Ok(())
+        } else {
+            Err(Error::InvalidSyntax)
         }
     }
 }
