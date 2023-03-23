@@ -1,55 +1,5 @@
-# JSON Parsing Test Suite
-A comprehensive test suite for RFC 8259 compliant JSON parsers
+# JSON Peg Parser
 
-This repository was created as an appendix to the article [Parsing JSON is a Minefield 💣](http://seriot.ch/parsing_json.php).
+A JSON parser written in rust making using of pest.
 
-**/parsers/**
-
-This directory contains several parsers and tiny wrappers to turn the parsers into JSON validators, by returning a specific value.
-
-- `0` the parser did accept the content
-- `1` the parser did reject the content
-- `>1` the process did crash
-- `timeout` happens after 5 seconds
-
-**/test\_parsing/**
-
-The name of these files tell if their contents should be accepted or rejected.
-
-- `y_` content must be accepted by parsers
-- `n_` content must be rejected by parsers
-- `i_` parsers are free to accept or reject content
-
-**/test\_transform/**
-
-These files contain weird structures and characters that parsers may understand differently, eg:
-
-- huge numbers
-- dictionaries with similar keys
-- NULL characters
-- escaped invalid strings
-
-These files were used to produce `results/transform.html`.
-
-**/run_tests.py**
-
-Run all parsers with all files:
-
-    $ python3 run_tests.py
-
-Run all parsers with a specific file:
-
-    $ python3 run_tests.py file.json
-
-Run specific parsers with all files:
-
-    $ echo '["Python 2.7.10", "Python 3.5.2"]' > python_only.json
-    $ python3 run_tests.py --filter=python_only.json
-
-The script writes logs in `results/logs.txt`.
-
-The script then reads `logs.txt` and generates `results/parsing.html`.
-
-**/results/**
-
-<img src="results/pruned_results.png" alt="JSON Parsing Tests" />
+This was my first venture into PEG based parsing after doing some more conventional parsing for my [simple scripting language](https://github.com/Ben-Brady/simple-scripting-language) project. Once I establsihed the grammar, writing the rest of the parser was quite easy as I could use the languages built-in convesions (string and floating point) to transform into language constructs as they had already been validated by the PEG grammar.
