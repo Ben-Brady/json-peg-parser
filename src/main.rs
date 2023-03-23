@@ -1,24 +1,24 @@
-mod scanner;
-mod tokenizer;
+mod peg;
 mod parser;
 mod error;
 pub use error::Error;
-pub use tokenizer::{Token, Tokenizer};
-pub use parser::{parse, JSON};
+pub use parser::{parse, Value};
 
-#[cfg(test)]
-mod tests;
+extern crate pest;
+extern crate pest_derive;
 
 fn main() {
-    use std::process;
     use std::fs;
     use std::env;
 
-    let path: String = env::args().nth(1).unwrap();
-    let json = fs::read_to_string(path).unwrap();
-
-    match parse(&json) {
-        Ok(_) => { process::exit(0) }
-        Err(_) => { process::exit(1) }
-    }
+    let path: String = env::args().nth(1).expect("Need to provide a json file path");
+    let json = fs::read_to_string(path).expect("Could not read file");
+    let parsed = parse(&json);
+    let parsed = parsed.unwrap();
+    println!("{:#?}", parsed);
+    // For json test suite
+    // match parsed {
+    //     Ok(_) => { process::exit(0) }
+    //     Err(_) => { process::exit(1) }
+    // }
 }

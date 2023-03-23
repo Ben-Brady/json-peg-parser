@@ -1,0 +1,56 @@
+whitespace = _{ ("\x20" | "\x0A" | "\x0D" | "\x09") * }
+
+non_zero_digit = { ASCII_NONZERO_DIGIT }
+digit = { ASCII_DIGIT }
+number = @{ ( "0" ) | ( non_zero_digit ~ digit* ) }
+decimal = @{ "." ~ digit+ }
+exponent = @{ ( "E" | "e" ) ~ ( "-" | "+" )? ~ digit+ }
+js_number = @{
+  "-"? ~
+	(
+    number ~
+    decimal? ~
+    exponent?
+  )
+}
+
+char = {
+    !("\"" | "\\") ~ ANY
+    | "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t")
+    | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
+inner_string = { char* }
+js_string = { "\"" ~ inner_string ~ "\"" }
+
+comma = _{ whitespace ~ "," ~ whitespace }
+js_array = {
+  "[" ~ whitespace ~ 
+  value? ~ (
+     comma ~ value
+    )*
+  ~ whitespace ~ "]"
+}
+
+object_key_value = {whitespace ~ js_string ~ whitespace ~ ":" ~ whitespace ~ value }
+js_object = {
+  "{" ~ whitespace ~
+    (object_key_value ~ whitespace ~ "," ~ whitespace)* ~
+    object_key_value? ~
+  whitespace ~ "}"
+}
+
+js_false = { "false" }
+js_true = { "true" }
+js_null = { "null" }
+
+value = _{
+  whitespace ~ (
+    js_string |
+    js_number |
+    js_object |
+    js_array |
+    js_true |
+    js_false |
+    js_null
+  ) ~ whitespace
+}
